@@ -121,7 +121,7 @@ public class IndoorMapView extends View {
 			}
 			
 			int viewLeft = curX;
-			int viewTop = curX;
+			int viewTop = curY;
 			int viewRight = (viewLeft + mView.getMeasuredWidth() - 1);
 			int viewBottom = (viewTop + mView.getMeasuredHeight() - 1);
 			
@@ -131,16 +131,19 @@ public class IndoorMapView extends View {
 			int right = viewRight / TILE_SIZE;
 			int bottom = viewBottom / TILE_SIZE;
 			
+			Log.d(TAG, "Left: " + left + ", Top: " + top + ", Right: " + right + ", Bottom: " + bottom);
+			
 			Vector<Tile> tiles = new Vector<Tile>();
 			for (int i = top; i <= bottom; i++ ) {
 				for (int j = left; j <= right; j++) {
 					int tileId = generateId(j, i, mScaleLevel);
 					String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
-					Log.d(TAG, "Add tile: " + tilePath);
+					//Log.d(TAG, "Add tile: " + tilePath);
 					Tile tile = new Tile();
-					tile.x = -(curX % TILE_SIZE) + j * TILE_SIZE;
-					tile.y = -(curY % TILE_SIZE) + i * TILE_SIZE;
+					tile.x = -(curX % TILE_SIZE) + (j - left) * TILE_SIZE;
+					tile.y = -(curY % TILE_SIZE) + (i - top) * TILE_SIZE;
 					tile.bitmap = BitmapFactory.decodeFile(tilePath);
+					Log.d(TAG, "Tile: x=" + tile.x + ", y=" + tile.y + ", bitmap=" + tile.bitmap);
 					tiles.add(tile);
 				}
 			}
