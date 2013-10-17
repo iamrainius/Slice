@@ -6,28 +6,28 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
-import android.graphics.Paint;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 
 public class IndoorMapView extends View {
-	private static final String MAP_PATH_PREFIX = "/sdcard/slice-demo";
+
+	private static final String TAG = IndoorMapView.class.getSimpleName();
 	
+	private static final String MAP_PATH_PREFIX = "/sdcard/slice-demo/";
+
 	private static final int SCALE_LEVEL_22 = 22;
 	private static final int SCALE_LEVEL_23 = 23;
 	private static final int SCALE_LEVEL_24 = 24;
 
-	private static final int TILE_SIZE = 256;
-	
-	private Bitmap mMap;
-	
-	private boolean mFirstMeaseured = false;
+	public static final int TILE_SIZE = 256;
 
-	private int mStartX;
-	private int mStartY;
-	private int mScaleLevel = SCALE_LEVEL_24;
-
-	private Vector<Bitmap> mTiles = new Vector<Bitmap>();
+	private boolean mFirstDraw = true;
+	public int mScaleLevel;
+	
+	private SlicedMap mMap;
+	private Vector<Tile> mTiles;
+	
 
 	public IndoorMapView(Context context, AttributeSet attrs, int defStyle) {
 		super(context, attrs, defStyle);
@@ -45,73 +45,113 @@ public class IndoorMapView extends View {
 	}
 
 	private void init() {
-		// mMap = loadMapByLevel(SCALE_LEVEL_24);
-	}
-
-	private Bitmap[] loadMapByLevel(int level) {
-		String path = MAP_PATH_PREFIX + "/" + level + ".jpg";
-		BitmapFactory.Options options = new BitmapFactory.Options();
-		options.inJustDecodeBounds = true;
-		Bitmap originalMap = BitmapFactory.decodeFile(path, options);
-		
-		int width = originalMap.getWidth();
-		int height = originalMap.getHeight();
-		
-		int cols = width / TILE_SIZE + ((width % TILE_SIZE == 0) ? 0 : 1);
-		int rows = height / TILE_SIZE + ((height % TILE_SIZE == 0) ? 0 : 1);
-		
-		rebuildTiles(rows, cols);
-		
-		
-		return null;	
-	}
-
-	private void releaseTiles() {
-		
-		for (Bitmap b : mTiles) {
-			b.recycle();
-		}
-		
-		mTiles.clear();
-	}
-	
-	private void rebuildTiles() {
-		
-	}
-	
-	private static final int __10_MASK = ((1 << 20) - 1);
-	
-	private static int generateId(int x, int y, int level) {
-		return (x & __10_MASK) | ((y & __10_MASK) << 10) | ((level & 0xff) << 20);
+		mScaleLevel = SCALE_LEVEL_24;
 	}
 
 	@Override
 	protected void onDraw(Canvas canvas) {
-		if (!mFirstMeaseured) {
-			mFirstMeaseured = true;
+		if (mFirstDraw) {
+			mFirstDraw = false;
+			post(new Runnable() {
+
+				@Override
+				public void run() {
+					initMap(SCALE_LEVEL_24);
+					invalidate();
+				}
+			});
 			
-			int viewWidth = getMeasuredWidth();
-			int viewHeight = getMeasuredHeight();
-			int mapWidth = mMap.getWidth();
-			int mapHeight = mMap.getHeight();
-			
-			mStartX = (viewWidth - mapWidth) / 2;
-			mStartY = (viewHeight - mapHeight) / 2;
-			
-			invalidate();
 			return;
 		}
-		
-		drawMap(canvas);
+
+		if (mTiles != null) {
+			for (int i = 0; i < mTiles.size(); i++) {
+				Tile tile = mTiles.get(i);
+				canvas.drawBitmap(tile.bitmap, tile.x, tile.y, null);
+			}
+		}
 	}
 
-	private void drawMap(Canvas canvas) {
-		if (mMap == null) {
-			return;
+	private void initMap(int level) {
+		String path = MAP_PATH_PREFIX + level + ".jpg";
+		Log.d(TAG, "Original map: " + path);
+		BitmapFactory.Options options = new BitmapFactory.Options();
+		options.inJustDecodeBounds = true;
+		Bitmap originalMap = BitmapFactory.decodeFile(path, options);
+		
+		int width = options.outWidth;
+		int height = options.outHeight;
+		
+		mMap = new SlicedMap(width, height, this);
+		mMap.curX = (mMap.width - getMeasuredWidth()) / 2;
+		mMap.curY = (mMap.height - getMeasuredHeight()) / 2;
+		mTiles = mMap.getVisibleTiles();
+	}
+
+	private static class Tile {
+		public int x;
+		public int y;
+		public Bitmap bitmap;
+	}
+
+	private class SlicedMap {
+
+		public final int width;
+		public final int height;
+		public final int rows;
+		public final int columns;
+		public int curX = 0;
+		public int curY = 0;
+		
+		private View mView;
+
+		public SlicedMap(int originalWidth, int originalHeight, View view) {
+			mView = view;
+
+			rows = originalHeight / TILE_SIZE + ((originalHeight % TILE_SIZE == 0) ? 0 : 1);
+			columns = originalWidth / TILE_SIZE + ((originalWidth % TILE_SIZE == 0) ? 0 : 1);
+			
+			width = columns * TILE_SIZE;
+			height = rows * TILE_SIZE;
+		}
+
+		public Vector<Tile> getVisibleTiles() {
+			if (mView == null) {
+				return null;
+			}
+			
+			int viewLeft = curX;
+			int viewTop = curX;
+			int viewRight = (viewLeft + mView.getMeasuredWidth() - 1);
+			int viewBottom = (viewTop + mView.getMeasuredHeight() - 1);
+			
+			
+			int left = viewLeft / TILE_SIZE;
+			int top = viewTop / TILE_SIZE;
+			int right = viewRight / TILE_SIZE;
+			int bottom = viewBottom / TILE_SIZE;
+			
+			Vector<Tile> tiles = new Vector<Tile>();
+			for (int i = top; i <= bottom; i++ ) {
+				for (int j = left; j <= right; j++) {
+					int tileId = generateId(j, i, mScaleLevel);
+					String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
+					Log.d(TAG, "Add tile: " + tilePath);
+					Tile tile = new Tile();
+					tile.x = -(curX % TILE_SIZE) + j * TILE_SIZE;
+					tile.y = -(curY % TILE_SIZE) + i * TILE_SIZE;
+					tile.bitmap = BitmapFactory.decodeFile(tilePath);
+					tiles.add(tile);
+				}
+			}
+			
+			return tiles;
 		}
 		
-		canvas.drawBitmap(mMap, mStartX, mStartY, null);
+		private static final int __10_MASK = ((1 << 20) - 1);
+		
+		private int generateId(int x, int y, int level) {
+			return (x & __10_MASK) | ((y & __10_MASK) << 10) | ((level & 0xff) << 20);
+		}
 	}
-
-	
 }
