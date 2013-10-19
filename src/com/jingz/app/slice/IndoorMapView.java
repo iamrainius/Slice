@@ -142,7 +142,7 @@ public class IndoorMapView extends View {
 					Tile tile = new Tile();
 					tile.x = -(curX % TILE_SIZE) + (j - left) * TILE_SIZE;
 					tile.y = -(curY % TILE_SIZE) + (i - top) * TILE_SIZE;
-					tile.bitmap = BitmapFactory.decodeFile(tilePath);
+					tile.bitmap = getBitmap(tilePath);
 					Log.d(TAG, "Tile: x=" + tile.x + ", y=" + tile.y + ", bitmap=" + tile.bitmap);
 					tiles.add(tile);
 				}
@@ -151,6 +151,10 @@ public class IndoorMapView extends View {
 			return tiles;
 		}
 		
+		private Bitmap getBitmap(String tilePath) {
+			return BitmapFactory.decodeFile(tilePath);
+		}
+
 		private static final int __10_MASK = ((1 << 20) - 1);
 		
 		private int generateId(int x, int y, int level) {
