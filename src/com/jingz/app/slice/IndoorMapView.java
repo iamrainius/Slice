@@ -2,6 +2,7 @@ package com.jingz.app.slice;
 
 import java.util.Vector;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -9,8 +10,10 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Paint.Style;
+import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.LruCache;
 import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
@@ -18,6 +21,7 @@ import android.view.ScaleGestureDetector;
 import android.view.ScaleGestureDetector.OnScaleGestureListener;
 import android.view.View;
 
+@TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 public class IndoorMapView extends View {
 
 	private static final String TAG = IndoorMapView.class.getSimpleName();
@@ -38,6 +42,7 @@ public class IndoorMapView extends View {
 	
 	private GestureDetector mGestureDetector;
 	private ScaleGestureDetector mScaleGestureDetector;
+	private TileLoader mTileLoader;
 
 	Paint mFramePaint;
 
@@ -59,6 +64,7 @@ public class IndoorMapView extends View {
 	}
 
 	private void init() {
+		mTileLoader = new TileLoader();
 		mFramePaint = new Paint();
 		mFramePaint.setStyle(Style.FILL);
 		mFramePaint.setColor(0x550000ff);
@@ -216,19 +222,15 @@ public class IndoorMapView extends View {
 				return tiles;
 			}
 			
-			
-			tiles.clear();
+			clearTiles();
 			for (int i = top; i <= bottom; i++ ) {
 				for (int j = left; j <= right; j++) {
 					int tileId = generateId(j, i, mScaleLevel);
-					String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
-					//Log.d(TAG, "Add tile: " + tilePath);
-					Tile tile = new Tile();
-					tile.x = getScrollX() -(curX % TILE_SIZE) + (j - left) * TILE_SIZE;
-					tile.y = getScrollY() -(curY % TILE_SIZE) + (i - top) * TILE_SIZE;
-					tile.bitmap = BitmapFactory.decodeFile(tilePath);
+					int tileX = getScrollX() - (curX % TILE_SIZE) + (j - left) * TILE_SIZE;
+					int tileY = getScrollY() - (curY % TILE_SIZE) + (i - top) * TILE_SIZE;
 					//Log.d(TAG, "Tile: x=" + tile.x + ", y=" + tile.y + ", bitmap=" + tile.bitmap);
-					tiles.add(tile);
+					
+					tiles.add(mTileLoader.loadTile(tileId, tileX, tileY));
 				}
 			}
 			
@@ -239,6 +241,47 @@ public class IndoorMapView extends View {
 		
 		private int generateId(int x, int y, int level) {
 			return (x & __10_MASK) | ((y & __10_MASK) << 10) | ((level & 0xff) << 20);
+		}
+		
+		private void clearTiles() {
+			if (tiles == null) {
+				return;
+			}
+			
+//			for (Tile t : tiles) {
+//				t.bitmap.recycle();
+//			}
+			
+			tiles.clear();		
+		}
+	}
+	
+	private class TileLoader {
+		
+		LruCache<Integer, Tile> mMemoryCache = new LruCache<Integer, Tile>(80);
+		
+		/**
+		 * Load an image indicated by imagePath.
+		 * Use cache to do this with higher efficient
+		 * @param imagePath
+		 * @return the Bitmap instance
+		 */
+		public Tile loadTile(int tileId, int x, int y) {
+			Tile tile = null;
+			
+			tile = mMemoryCache.get(tileId);
+			
+			if (tile == null) {
+				tile = new Tile();
+				tile.x = x;
+				tile.y = y;
+				String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
+				tile.bitmap = BitmapFactory.decodeFile(tilePath);
+				
+				mMemoryCache.put(tileId, tile);
+			}
+			
+			return tile;
 		}
 	}
 	
@@ -299,8 +342,5 @@ public class IndoorMapView extends View {
 		
 	};
 	private OnScaleGestureListener mScaleGestureListener;
-	
-	private static class ImageLoader {
-		
-	}
+
 }
