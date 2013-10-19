@@ -1,11 +1,10 @@
 package com.jingz.app.slice;
 
-import android.os.Build;
-import android.os.Bundle;
 import android.annotation.TargetApi;
 import android.app.ActionBar;
 import android.app.Activity;
-import android.view.Menu;
+import android.os.Build;
+import android.os.Bundle;
 
 public class MainActivity extends Activity {
 
@@ -18,15 +17,6 @@ public class MainActivity extends Activity {
 		ActionBar actionBar = getActionBar();
 		actionBar.hide();
 		
-		
-		
-	}
-
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.main, menu);
-		return true;
 	}
 
 }
