@@ -11,6 +11,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.Paint.Style;
 import android.os.Build;
+import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.LruCache;
@@ -20,6 +21,7 @@ import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.ScaleGestureDetector.OnScaleGestureListener;
 import android.view.View;
+import android.widget.OverScroller;
 
 @TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
 public class IndoorMapView extends View {
@@ -42,6 +44,8 @@ public class IndoorMapView extends View {
 	
 	private GestureDetector mGestureDetector;
 	private ScaleGestureDetector mScaleGestureDetector;
+	private OverScroller mScroller;
+	
 	private TileLoader mTileLoader;
 
 	Paint mFramePaint;
@@ -69,6 +73,7 @@ public class IndoorMapView extends View {
 		mFramePaint.setStyle(Style.FILL);
 		mFramePaint.setColor(0x550000ff);
 		mScaleLevel = SCALE_LEVEL_24;
+		mScroller = new OverScroller(getContext());
 		mGestureDetector = new GestureDetector(getContext(), mGestureListener);
 		mScaleGestureDetector = new ScaleGestureDetector(getContext(), mScaleGestureListener);
 	}
@@ -111,18 +116,18 @@ public class IndoorMapView extends View {
 	public boolean onTouchEvent(MotionEvent event) {
 		boolean retVal = mGestureDetector.onTouchEvent(event);
 		
-		switch (event.getAction()) {
-		case MotionEvent.ACTION_UP:
-			if (mScrolled) {
-				mScrolled = false;
-				if (mMap != null) {
-					updateMap();
-					invalidate();
-				}
-			}
-			
-			return true;
-		}
+//		switch (event.getAction()) {
+//		case MotionEvent.ACTION_UP:
+//			if (mScrolled) {
+//				mScrolled = false;
+//				if (mMap != null) {
+//					updateMap();
+//					invalidate();
+//				}
+//			}
+//			
+//			return true;
+//		}
 		
 		return retVal || super.onTouchEvent(event);
 	}
@@ -158,6 +163,23 @@ public class IndoorMapView extends View {
 		if (mMap != null) {
 			updateMap(mMap.curX, mMap.curY);
 		}
+	}
+	
+	@Override
+	public void computeScroll() {
+		if (mScroller.computeScrollOffset()) {
+			
+		}
+	}
+	
+	@Override
+    protected final int computeHorizontalScrollRange() {
+		return mMap.width;
+    }
+	
+	@Override
+	protected final int computeVerticalScrollRange() {
+    	return mMap.height;
 	}
 
 	private static class Tile {
@@ -248,10 +270,6 @@ public class IndoorMapView extends View {
 				return;
 			}
 			
-//			for (Tile t : tiles) {
-//				t.bitmap.recycle();
-//			}
-			
 			tiles.clear();		
 		}
 	}
@@ -261,10 +279,10 @@ public class IndoorMapView extends View {
 		LruCache<Integer, Tile> mMemoryCache = new LruCache<Integer, Tile>(80);
 		
 		/**
-		 * Load an image indicated by imagePath.
+		 * Load a tile indicated by tileId.
 		 * Use cache to do this with higher efficient
-		 * @param imagePath
-		 * @return the Bitmap instance
+		 * @param tileId
+		 * @return the Tile instance
 		 */
 		public Tile loadTile(int tileId, int x, int y) {
 			Tile tile = null;
@@ -273,13 +291,14 @@ public class IndoorMapView extends View {
 			
 			if (tile == null) {
 				tile = new Tile();
-				tile.x = x;
-				tile.y = y;
 				String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
 				tile.bitmap = BitmapFactory.decodeFile(tilePath);
 				
 				mMemoryCache.put(tileId, tile);
 			}
+			
+			tile.x = x;
+			tile.y = y;
 			
 			return tile;
 		}
@@ -322,7 +341,7 @@ public class IndoorMapView extends View {
 			scrollBy((int) distanceX, (int) distanceY);
 			mMap.curX += distanceX;
 			mMap.curY += distanceY;
-			
+			updateMap();
 			return true;
 		}
 
@@ -330,17 +349,29 @@ public class IndoorMapView extends View {
 		@Override
 		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
 				float velocityY) {
-			// TODO Auto-generated method stub
-			return super.onFling(e1, e2, velocityX, velocityY);
+			mScroller.forceFinished(true);
+			mScroller.fling(
+					getScrollX(), 
+					getScrollY(), 
+					(int) -velocityX, 
+					(int) -velocityY, 
+					0, mMap.width - getMeasuredWidth(), 
+					0, mMap.height - getMeasuredHeight(), 
+					getMeasuredWidth() / 4, 
+					getMeasuredHeight() / 4);
+			
+			ViewCompat.postInvalidateOnAnimation(IndoorMapView.this);
+			return true;
+			//return super.onFling(e1, e2, velocityX, velocityY);
 		}
 
 		@Override
 		public boolean onDown(MotionEvent e) {
-			// TODO Auto-generated method stub
 			return true;
 		}
 		
 	};
+	
 	private OnScaleGestureListener mScaleGestureListener;
 
 }
