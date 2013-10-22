@@ -2,17 +2,15 @@ package com.jingz.app.slice;
 
 import java.util.Vector;
 
-import android.R.integer;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Rect;
 import android.graphics.Paint.Style;
+import android.graphics.Rect;
 import android.os.Build;
-import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.LruCache;
@@ -20,7 +18,7 @@ import android.view.GestureDetector;
 import android.view.GestureDetector.SimpleOnGestureListener;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
-import android.view.ScaleGestureDetector.OnScaleGestureListener;
+import android.view.ScaleGestureDetector.SimpleOnScaleGestureListener;
 import android.view.View;
 import android.widget.OverScroller;
 
@@ -70,8 +68,8 @@ public class IndoorMapView extends View {
 		mTileLoader = new TileLoader();
 		mFramePaint = new Paint();
 		mFramePaint.setStyle(Style.FILL);
-		mFramePaint.setColor(0x550000ff);
-		mScaleLevel = SCALE_LEVEL_24;
+		mFramePaint.setColor(0xff0000ff);
+		mScaleLevel = SCALE_LEVEL_23;
 		mScroller = new OverScroller(getContext());
 		mGestureDetector = new GestureDetector(getContext(), mGestureListener);
 		mScaleGestureDetector = new ScaleGestureDetector(getContext(), mScaleGestureListener);
@@ -86,7 +84,7 @@ public class IndoorMapView extends View {
 
 				@Override
 				public void run() {
-					initMap(SCALE_LEVEL_24);
+					initMap();
 					invalidate();
 				}
 			});
@@ -113,27 +111,16 @@ public class IndoorMapView extends View {
 
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {
-		boolean retVal = mGestureDetector.onTouchEvent(event);
-		
-//		switch (event.getAction()) {
-//		case MotionEvent.ACTION_UP:
-//			if (mScrolled) {
-//				mScrolled = false;
-//				if (mMap != null) {
-//					updateMap();
-//					invalidate();
-//				}
-//			}
-//			
-//			return true;
-//		}
+		boolean retVal = mScaleGestureDetector.onTouchEvent(event);
+		retVal = mGestureDetector.onTouchEvent(event) || retVal;
 		
 		return retVal || super.onTouchEvent(event);
 	}
 
-	private void initMap(int level) {
-		String path = MAP_PATH_PREFIX + level + ".jpg";
-		//Log.d(TAG, "Original map: " + path);
+	private void initMap() {
+		scrollTo(0, 0);
+		String path = MAP_PATH_PREFIX + mScaleLevel + ".jpg";
+		Log.d(TAG, "Original map: " + path);
 		BitmapFactory.Options options = new BitmapFactory.Options();
 		options.inJustDecodeBounds = true;
 		BitmapFactory.decodeFile(path, options);
@@ -147,11 +134,11 @@ public class IndoorMapView extends View {
 			return;
 		}
 		
-		if (curX < 0) 				{ curX = 0; }
-		if (curX >= mMap.width) 	{ curX = mMap.width - 1; }
-		if (curY < 0) 				{ curY = 0; }
-		if (curY >= mMap.height) 	{ curX = mMap.height - 1; }
-		
+//		if (curX < 0) 				{ curX = 0; }
+//		if (curX >= mMap.width) 	{ curX = mMap.width - 1; }
+//		if (curY < 0) 				{ curY = 0; }
+//		if (curY >= mMap.height) 	{ curX = mMap.height - 1; }
+//		
 		//Log.d(TAG, "updateMap: curX=" + curX + ", curY=" + curY);
 		mMap.curX = curX;
 		mMap.curY = curY;
@@ -164,9 +151,10 @@ public class IndoorMapView extends View {
 		}
 	}
 	
-	private int mStartX;
-	private int mStartY;
+	private int mCurX;
+	private int mCurY;
 	private boolean mIsFlinging = false;
+	
 	@Override
 	public void computeScroll() {
 		super.computeScroll();
@@ -175,49 +163,32 @@ public class IndoorMapView extends View {
 			return;
 		}
 		
-		Log.d(TAG, "Scrolling.");
+		Log.d(TAG, "Scrolling...");
+		
+		int distanceX = mScroller.getCurrX() - mCurX;
+		int distanceY = mScroller.getCurrY() - mCurY;
+		mCurX = mScroller.getCurrX();
+		mCurY = mScroller.getCurrY();
+		
 		if (mScroller.computeScrollOffset()) {
-
-			int curX = mScroller.getCurrX();
-			int curY = mScroller.getCurrY();
-			
-			if (curX < mMap.frame.left) {
-				curX = mMap.frame.left;
-			}
-			
-			if (curX > mMap.frame.right - getMeasuredWidth() + 1) {
-				curX = mMap.frame.right - getMeasuredWidth() + 1;
-			}
-			
-			if (curY < mMap.frame.top) {
-				curY = mMap.frame.top;
-			}
-			
-			if (curY > mMap.frame.bottom - getMeasuredHeight() + 1) {
-				curY = mMap.frame.bottom - getMeasuredHeight() + 1;
-			}
-			
-			scrollTo(curX, curY);
-			invalidate();
+			doScroll(distanceX, distanceY, true);
 		} else {
-			int endX = getScrollX();
-			int endY = getScrollY();
-			doScroll(endX - mStartX, endY - mStartY);
-			invalidate();
+			mIsFlinging = false;
+			// doScroll(distanceX, distanceY, true);
 		}
 	}
 	
-//	@Override
-//    protected final int computeHorizontalScrollRange() {
-//		return mMap.width;
-//    }
-//	
-//	@Override
-//	protected final int computeVerticalScrollRange() {
-//    	return mMap.height;
-//	}
+	@Override
+    protected final int computeHorizontalScrollRange() {
+		return mMap.width;
+    }
+	
+	@Override
+	protected final int computeVerticalScrollRange() {
+    	return mMap.height;
+	}
 
-	private void doScroll(int distanceX, int distanceY) {
+	private void doScroll(int distanceX, int distanceY, boolean needUpdate) {
 		if (mMap != null && distanceX < 0) {
 			if ((getScrollX() + (int) distanceX) < mMap.frame.left) {
 				distanceX = mMap.frame.left - getScrollX();
@@ -247,7 +218,11 @@ public class IndoorMapView extends View {
 		scrollBy((int) distanceX, (int) distanceY);
 		mMap.curX += distanceX;
 		mMap.curY += distanceY;
-		updateMap();
+		
+		if (needUpdate) {
+			updateMap();
+		}
+		
 		invalidate();
 	}
 
@@ -299,21 +274,29 @@ public class IndoorMapView extends View {
 			int viewRight = (viewLeft + mView.getMeasuredWidth() - 1);
 			int viewBottom = (viewTop + mView.getMeasuredHeight() - 1);
 			
+			Log.d(TAG + "1", "viewLeft: " + viewLeft + ", viewTop: " + viewTop
+					+ ", viewRight: " + viewRight + ", viewBottom: "
+					+ viewBottom);
 			
 			int left = viewLeft / TILE_SIZE;
 			int top = viewTop / TILE_SIZE;
 			int right = viewRight / TILE_SIZE;
 			int bottom = viewBottom / TILE_SIZE;
 			
-			// Log.d(TAG, "Left: " + left + ", Top: " + top + ", Right: " + right + ", Bottom: " + bottom);
+			Log.d(TAG + "1", "Left: " + left + ", Top: " + top + ", Right: " + right + ", Bottom: " + bottom);
 			
 			if (areaToRender[0] == left && areaToRender[1] == top
 					&& areaToRender[2] == right && areaToRender[3] == bottom) {
-				//Log.d(TAG, "Still use the same tile list.");
+				Log.d(TAG + "1", "Still use the same tile list.");
 				return tiles;
 			}
 			
 			clearTiles();
+			areaToRender[0] = left;
+			areaToRender[1] = top;
+			areaToRender[2] = right;
+			areaToRender[3] = bottom;
+			
 			for (int i = top; i <= bottom; i++ ) {
 				for (int j = left; j <= right; j++) {
 					int tileId = generateId(j, i, mScaleLevel);
@@ -359,11 +342,14 @@ public class IndoorMapView extends View {
 			tile = mMemoryCache.get(tileId);
 			
 			if (tile == null) {
+				Log.d(TAG + "2", "Not in cache");
 				tile = new Tile();
 				String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
 				tile.bitmap = BitmapFactory.decodeFile(tilePath);
 				
 				mMemoryCache.put(tileId, tile);
+			} else {
+				Log.d(TAG + "2", "Hit the cache");
 			}
 			
 			tile.x = x;
@@ -378,37 +364,46 @@ public class IndoorMapView extends View {
 		@Override
 		public boolean onScroll(MotionEvent e1, MotionEvent e2,
 				float distanceX, float distanceY) {
+			int dx = (int) distanceX;
+			int dy = (int) distanceY;
 			
-//			Log.d(TAG, "Scroll by: x=" + distanceX + ", y=" + distanceY);
-//			Log.d(TAG, "Scrolld: scrollX=" + getScrollX() + ", scrollY=" + getScrollY());
-			
-			if (mMap != null && distanceX < 0) {
-				if ((getScrollX() + (int) distanceX) < mMap.frame.left) {
-					distanceX = mMap.frame.left - getScrollX();
+			if (mMap != null) {
+				if (mMap.width <= getMeasuredWidth()) {
+					dx = 0;
+				}
+				
+				if (dx < 0) {
+					if ((getScrollX() + (int) dx) < mMap.frame.left) {
+						dx = mMap.frame.left - getScrollX();
+					}
+				}
+				
+				if (dx > 0) {
+					if ((getScrollX() + (int) dx + getMeasuredWidth() - 1) > mMap.frame.right) {
+						dx = mMap.frame.right - getScrollX() - getMeasuredWidth() + 1 ;
+					}
+				}
+				
+				if (mMap.height <= getMeasuredHeight()) {
+					dy = 0;
+				}
+				
+				if (dy < 0) {
+					if ((getScrollY() + (int) dy) < mMap.frame.top) {
+						dy = mMap.frame.top - getScrollY();
+					}
+				}
+				
+				if (dy > 0) {
+					if ((getScrollY() + (int) dy + getMeasuredHeight() - 1) > mMap.frame.bottom) {
+						dy = mMap.frame.bottom - getScrollY() - getMeasuredHeight() + 1 ;
+					}
 				}
 			}
 			
-			if (mMap != null && distanceX > 0) {
-				if ((getScrollX() + (int) distanceX + getMeasuredWidth() - 1) > mMap.frame.right) {
-					distanceX = mMap.frame.right - getScrollX() - getMeasuredWidth() + 1 ;
-				}
-			}
-			
-			if (mMap != null && distanceY < 0) {
-				if ((getScrollY() + (int) distanceY) < mMap.frame.top) {
-					distanceY = mMap.frame.top - getScrollY();
-				}
-			}
-			
-			if (mMap != null && distanceY > 0) {
-				if ((getScrollY() + (int) distanceY + getMeasuredHeight() - 1) > mMap.frame.bottom) {
-					distanceY = mMap.frame.bottom - getScrollY() - getMeasuredHeight() + 1 ;
-				}
-			}
-			
-			scrollBy((int) distanceX, (int) distanceY);
-			mMap.curX += distanceX;
-			mMap.curY += distanceY;
+			scrollBy((int) dx, (int) dy);
+			mMap.curX += dx;
+			mMap.curY += dy;
 			updateMap();
 			return true;
 		}
@@ -422,24 +417,25 @@ public class IndoorMapView extends View {
 			Log.d(TAG, "maxX: " + (mMap.width - getMeasuredWidth())
 					+ ", maxY: " + (mMap.height - getMeasuredHeight()));
 			
-			mIsFlinging = true;
-			mStartX = getScrollX();
-			mStartY = getScrollY();
-
-			mScroller.forceFinished(true);
-			mScroller.fling(
-					getScrollX(), 
-					getScrollY(), 
-					(int) -velocityX, 
-					(int) -velocityY, 
-					0, mMap.width - getMeasuredWidth(), 
-					0, mMap.height - getMeasuredHeight(), 
-					getMeasuredWidth() / 4, 
-					getMeasuredHeight() / 4);
-			
-//			mScroller.startScroll(mCurX, mCurY, (int) -velocityX, (int) -velocityY, 1000);
-			ViewCompat.postInvalidateOnAnimation(IndoorMapView.this);
-			return true;
+//			mIsFlinging = true;
+//			mCurX = getScrollX();
+//			mCurY = getScrollY();
+//
+//			mScroller.forceFinished(true);
+////			mScroller.fling(
+////					getScrollX(), 
+////					getScrollY(), 
+////					(int) -velocityX, 
+////					(int) -velocityY, 
+////					0, mMap.width - getMeasuredWidth(), 
+////					0, mMap.height - getMeasuredHeight(), 
+////					getMeasuredWidth() / 4, 
+////					getMeasuredHeight() / 4);
+//			
+//			mScroller.startScroll(mCurX, mCurY, (int) -velocityX / 10, (int) -velocityY / 10, 1000);
+//			ViewCompat.postInvalidateOnAnimation(IndoorMapView.this);
+//			return true;
+			return super.onFling(e1, e2, velocityX, velocityY);
 		}
 
 		@Override
@@ -453,6 +449,61 @@ public class IndoorMapView extends View {
 		
 	};
 	
-	private OnScaleGestureListener mScaleGestureListener;
+	private static final float REAL_SCALE_LEVEL_MAX = 2.0f;
+	private static final float REAL_SCALE_LEVEL_INIT = 1.0f;
+	private static final float REAL_SCALE_LEVEL_MIN = 0.5f;
+	
+	private float mRealZoomLevel;
+	
+	private SimpleOnScaleGestureListener mScaleGestureListener = new SimpleOnScaleGestureListener() {
+
+		@Override
+		public boolean onScale(ScaleGestureDetector detector) {
+			//Log.d(TAG, "onScale : " + detector.getScaleFactor());
+			return super.onScale(detector);
+		}
+
+		@Override
+		public boolean onScaleBegin(ScaleGestureDetector detector) {
+			
+			mRealZoomLevel = getRealScaleLevel(mScaleLevel);
+			Log.d(TAG, "onScaleBegin: " + mRealZoomLevel);
+			
+			return true;
+		}
+
+		@Override
+		public void onScaleEnd(ScaleGestureDetector detector) {
+			//int scaleLevel = getScaleLevel(detector.getScaleFactor() * mRealZoomLevel);
+			//Log.d(TAG, "onScaleEnd: " + (detector.getScaleFactor() * mRealZoomLevel) + ", " + scaleLevel);
+			mScaleLevel = getScaleLevel(detector.getScaleFactor() * mRealZoomLevel);
+			mFirstDraw = true;
+			invalidate();
+		}
+		
+	};
+
+	private float getRealScaleLevel(int scaleLevel) {
+		if (scaleLevel == SCALE_LEVEL_22) { return REAL_SCALE_LEVEL_MIN; }
+		if (scaleLevel == SCALE_LEVEL_23) { return REAL_SCALE_LEVEL_INIT; }
+		if (scaleLevel == SCALE_LEVEL_24) { return REAL_SCALE_LEVEL_MAX; }
+		
+		throw new IllegalArgumentException("The parameter must be one of 22, 23 or 24.");
+	}
+
+	private int getScaleLevel(float scaleFactor) {
+		final float upperLimit = (REAL_SCALE_LEVEL_MAX + REAL_SCALE_LEVEL_INIT) / 2;
+		final float lowerLimit = (REAL_SCALE_LEVEL_MIN + REAL_SCALE_LEVEL_INIT) / 2;
+		
+		if (scaleFactor >= upperLimit) {
+			return SCALE_LEVEL_24;
+		} else if (scaleFactor >= lowerLimit && scaleFactor < upperLimit) {
+			return SCALE_LEVEL_23;
+		} else if (scaleFactor < lowerLimit) {
+			return SCALE_LEVEL_22;
+		}
+		
+		return SCALE_LEVEL_23;
+	}
 
 }
