@@ -1,5 +1,6 @@
 package com.jingz.app.slice;
 
+import java.io.File;
 import java.util.Vector;
 
 import android.annotation.TargetApi;
@@ -10,6 +11,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.Rect;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.util.AttributeSet;
 import android.util.Log;
@@ -34,9 +36,16 @@ public class IndoorMapView extends View {
 	private static final int SCALE_LEVEL_24 = 24;
 
 	public static final int TILE_SIZE = 256;
+	
+	private static final float REAL_SCALE_LEVEL_MAX = 2.0f;
+	private static final float REAL_SCALE_LEVEL_INIT = 1.0f;
+	private static final float REAL_SCALE_LEVEL_MIN = 0.5f;
 
 	private boolean mFirstDraw = true;
 	public int mScaleLevel;
+	
+	private float mRealZoomLevel;
+	private float mOnScaleLevel = 1.0f;
 	
 	private SlicedMap mMap;
 	private Vector<Tile> mTiles;
@@ -92,18 +101,22 @@ public class IndoorMapView extends View {
 			return;
 		}
 
+		int pivotX = getMeasuredWidth() / 2 + getScrollX();
+		int pivotY = getMeasuredHeight() / 2 + getScrollY();
+		canvas.scale(mOnScaleLevel, mOnScaleLevel, pivotX, pivotY);
+
+		//		if (mMap != null) {
+//			canvas.drawRect(mMap.frame, mFramePaint);
+//		}
 		
-		//Log.d(TAG, "Draw frame.");
-		if (mMap != null) {
-			canvas.drawRect(mMap.frame, mFramePaint);
-		}
-		
-		//Log.d(TAG, "Draw tiles.");
 		if (mTiles != null) {
 			for (int i = 0; i < mTiles.size(); i++) {
 				Tile tile = mTiles.get(i);
 				if (tile.bitmap != null) {
 					canvas.drawBitmap(tile.bitmap, tile.x, tile.y, null);
+				} else {
+					Rect placeHolder = new Rect(tile.x, tile.y, tile.x + TILE_SIZE, tile.y + TILE_SIZE);
+					canvas.drawRect(placeHolder, mFramePaint);
 				}
 			}
 		}
@@ -134,12 +147,6 @@ public class IndoorMapView extends View {
 			return;
 		}
 		
-//		if (curX < 0) 				{ curX = 0; }
-//		if (curX >= mMap.width) 	{ curX = mMap.width - 1; }
-//		if (curY < 0) 				{ curY = 0; }
-//		if (curY >= mMap.height) 	{ curX = mMap.height - 1; }
-//		
-		//Log.d(TAG, "updateMap: curX=" + curX + ", curY=" + curY);
 		mMap.curX = curX;
 		mMap.curY = curY;
 		mTiles = mMap.getVisibleTiles();
@@ -162,8 +169,6 @@ public class IndoorMapView extends View {
 		if (!mIsFlinging) {
 			return;
 		}
-		
-		Log.d(TAG, "Scrolling...");
 		
 		int distanceX = mScroller.getCurrX() - mCurX;
 		int distanceY = mScroller.getCurrY() - mCurY;
@@ -274,20 +279,13 @@ public class IndoorMapView extends View {
 			int viewRight = (viewLeft + mView.getMeasuredWidth() - 1);
 			int viewBottom = (viewTop + mView.getMeasuredHeight() - 1);
 			
-			Log.d(TAG + "1", "viewLeft: " + viewLeft + ", viewTop: " + viewTop
-					+ ", viewRight: " + viewRight + ", viewBottom: "
-					+ viewBottom);
-			
 			int left = viewLeft / TILE_SIZE;
 			int top = viewTop / TILE_SIZE;
 			int right = viewRight / TILE_SIZE;
 			int bottom = viewBottom / TILE_SIZE;
 			
-			Log.d(TAG + "1", "Left: " + left + ", Top: " + top + ", Right: " + right + ", Bottom: " + bottom);
-			
 			if (areaToRender[0] == left && areaToRender[1] == top
 					&& areaToRender[2] == right && areaToRender[3] == bottom) {
-				Log.d(TAG + "1", "Still use the same tile list.");
 				return tiles;
 			}
 			
@@ -302,9 +300,11 @@ public class IndoorMapView extends View {
 					int tileId = generateId(j, i, mScaleLevel);
 					int tileX = getScrollX() - (curX % TILE_SIZE) + (j - left) * TILE_SIZE;
 					int tileY = getScrollY() - (curY % TILE_SIZE) + (i - top) * TILE_SIZE;
-					//Log.d(TAG, "Tile: x=" + tile.x + ", y=" + tile.y + ", bitmap=" + tile.bitmap);
 					
-					tiles.add(mTileLoader.loadTile(tileId, tileX, tileY));
+					Tile tile = mTileLoader.loadTile(tileId, tileX, tileY);
+					if (tile != null) {
+						tiles.add(tile);
+					}
 				}
 			}
 			
@@ -342,21 +342,54 @@ public class IndoorMapView extends View {
 			tile = mMemoryCache.get(tileId);
 			
 			if (tile == null) {
-				Log.d(TAG + "2", "Not in cache");
-				tile = new Tile();
-				String tilePath = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
-				tile.bitmap = BitmapFactory.decodeFile(tilePath);
+				String path = MAP_PATH_PREFIX + "slices/" + mScaleLevel + "/" + tileId + ".jpg";
+				File tileFile = new File(path);
 				
+				if (!tileFile.exists()) {
+					Log.d(TAG, path + " is not an available tile.");
+					return null;
+				}
+				
+				tile = new Tile();
+				tile.bitmap = null;
 				mMemoryCache.put(tileId, tile);
-			} else {
-				Log.d(TAG + "2", "Hit the cache");
+				
+				// load tile bitmap from external storage asynchronously
+				LoadTileBitmapTask loadBitmapTask = new LoadTileBitmapTask(tile, path);
+				loadBitmapTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
 			}
 			
-			tile.x = x;
-			tile.y = y;
+			if (tile != null) {
+				tile.x = x;
+				tile.y = y;
+			}
 			
 			return tile;
 		}
+	}
+	
+	private class LoadTileBitmapTask extends AsyncTask<Void, Void, Void> {
+		private Tile mTile;
+		private String mImagePath;
+
+		public LoadTileBitmapTask(Tile tile, String path) {
+			if (tile == null) {
+				throw new IllegalArgumentException();
+			}
+			
+			mTile = tile;
+			mImagePath = path;
+		}
+		
+		
+		@Override
+		protected Void doInBackground(Void... params) {
+			Log.d(TAG, "Asynchronously loading bitmap: " + mImagePath);
+			mTile.bitmap = BitmapFactory.decodeFile(mImagePath);
+			postInvalidate();
+			return null;
+		}
+		
 	}
 	
 	private SimpleOnGestureListener mGestureListener = new SimpleOnGestureListener() {
@@ -412,10 +445,6 @@ public class IndoorMapView extends View {
 		@Override
 		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
 				float velocityY) {
-			Log.d(TAG, "scrollX: " + getScrollX() + ", scrollY: " + getScrollY());
-			Log.d(TAG, "velocityX: " + velocityX + ", velocityY: " + velocityY);
-			Log.d(TAG, "maxX: " + (mMap.width - getMeasuredWidth())
-					+ ", maxY: " + (mMap.height - getMeasuredHeight()));
 			
 //			mIsFlinging = true;
 //			mCurX = getScrollX();
@@ -449,34 +478,26 @@ public class IndoorMapView extends View {
 		
 	};
 	
-	private static final float REAL_SCALE_LEVEL_MAX = 2.0f;
-	private static final float REAL_SCALE_LEVEL_INIT = 1.0f;
-	private static final float REAL_SCALE_LEVEL_MIN = 0.5f;
-	
-	private float mRealZoomLevel;
-	
 	private SimpleOnScaleGestureListener mScaleGestureListener = new SimpleOnScaleGestureListener() {
 
 		@Override
 		public boolean onScale(ScaleGestureDetector detector) {
-			//Log.d(TAG, "onScale : " + detector.getScaleFactor());
-			return super.onScale(detector);
+			mOnScaleLevel *= detector.getScaleFactor();
+			invalidate();
+			return true;
 		}
 
 		@Override
 		public boolean onScaleBegin(ScaleGestureDetector detector) {
-			
+			mOnScaleLevel = 1.0f;
 			mRealZoomLevel = getRealScaleLevel(mScaleLevel);
-			Log.d(TAG, "onScaleBegin: " + mRealZoomLevel);
-			
 			return true;
 		}
 
 		@Override
 		public void onScaleEnd(ScaleGestureDetector detector) {
-			//int scaleLevel = getScaleLevel(detector.getScaleFactor() * mRealZoomLevel);
-			//Log.d(TAG, "onScaleEnd: " + (detector.getScaleFactor() * mRealZoomLevel) + ", " + scaleLevel);
-			mScaleLevel = getScaleLevel(detector.getScaleFactor() * mRealZoomLevel);
+			mScaleLevel = getScaleLevel(mOnScaleLevel * mRealZoomLevel);
+			mOnScaleLevel = 1.0f;
 			mFirstDraw = true;
 			invalidate();
 		}
