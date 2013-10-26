@@ -1,4 +1,4 @@
-package com.jingz.app.slice;
+package com.autonavi.indoor;
 
 import java.io.File;
 import java.util.Vector;
@@ -13,6 +13,7 @@ import android.graphics.Paint.Style;
 import android.graphics.Rect;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.support.v4.view.ViewCompat;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.util.LruCache;
@@ -23,11 +24,12 @@ import android.view.ScaleGestureDetector;
 import android.view.ScaleGestureDetector.SimpleOnScaleGestureListener;
 import android.view.View;
 import android.widget.OverScroller;
+import android.widget.Scroller;
 
 @TargetApi(Build.VERSION_CODES.HONEYCOMB_MR1)
-public class IndoorMapView extends View {
+public class MapView extends View {
 
-	private static final String TAG = IndoorMapView.class.getSimpleName();
+	private static final String TAG = MapView.class.getSimpleName();
 	
 	private static final String MAP_PATH_PREFIX = "/sdcard/slice-demo/";
 
@@ -52,23 +54,23 @@ public class IndoorMapView extends View {
 	
 	private GestureDetector mGestureDetector;
 	private ScaleGestureDetector mScaleGestureDetector;
-	private OverScroller mScroller;
+	private Scroller mScroller;
 	
 	private TileLoader mTileLoader;
 
 	Paint mFramePaint;
 
-	public IndoorMapView(Context context, AttributeSet attrs, int defStyle) {
+	public MapView(Context context, AttributeSet attrs, int defStyle) {
 		super(context, attrs, defStyle);
 		init();
 	}
 
-	public IndoorMapView(Context context, AttributeSet attrs) {
+	public MapView(Context context, AttributeSet attrs) {
 		super(context, attrs);
 		init();
 	}
 
-	public IndoorMapView(Context context) {
+	public MapView(Context context) {
 		super(context);
 		init();
 	}
@@ -79,7 +81,7 @@ public class IndoorMapView extends View {
 		mFramePaint.setStyle(Style.FILL);
 		mFramePaint.setColor(0xff0000ff);
 		mScaleLevel = SCALE_LEVEL_23;
-		mScroller = new OverScroller(getContext());
+		mScroller = new Scroller(getContext());
 		mGestureDetector = new GestureDetector(getContext(), mGestureListener);
 		mScaleGestureDetector = new ScaleGestureDetector(getContext(), mScaleGestureListener);
 	}
@@ -100,15 +102,11 @@ public class IndoorMapView extends View {
 			
 			return;
 		}
-
+		
 		int pivotX = getMeasuredWidth() / 2 + getScrollX();
 		int pivotY = getMeasuredHeight() / 2 + getScrollY();
 		canvas.scale(mOnScaleLevel, mOnScaleLevel, pivotX, pivotY);
 
-		//		if (mMap != null) {
-//			canvas.drawRect(mMap.frame, mFramePaint);
-//		}
-		
 		if (mTiles != null) {
 			for (int i = 0; i < mTiles.size(); i++) {
 				Tile tile = mTiles.get(i);
@@ -158,28 +156,41 @@ public class IndoorMapView extends View {
 		}
 	}
 	
-	private int mCurX;
-	private int mCurY;
+	private int mCurX = Integer.MIN_VALUE;
+	private int mCurY = Integer.MIN_VALUE;
+	
 	private boolean mIsFlinging = false;
+	private int mFlingCount = 0;
 	
 	@Override
 	public void computeScroll() {
 		super.computeScroll();
-		
+
 		if (!mIsFlinging) {
 			return;
 		}
 		
-		int distanceX = mScroller.getCurrX() - mCurX;
-		int distanceY = mScroller.getCurrY() - mCurY;
-		mCurX = mScroller.getCurrX();
-		mCurY = mScroller.getCurrY();
-		
 		if (mScroller.computeScrollOffset()) {
-			doScroll(distanceX, distanceY, true);
+			if (mFlingCount < 2) {
+				mCurX = mScroller.getCurrX();
+				mCurY = mScroller.getCurrY();
+				mFlingCount++;
+				invalidate();
+			} else {
+				int distanceX = mScroller.getCurrX() - mCurX;
+				int distanceY = mScroller.getCurrY() - mCurY;
+				
+				mCurX = mScroller.getCurrX();
+				mCurY = mScroller.getCurrY();
+				
+				Log.d(TAG, "current computeScroll flinging: " + mMap.curX + ", " + mMap.curY); 
+
+				doScroll(distanceX, distanceY, true);
+			}
+			
 		} else {
+			mFlingCount = 0;
 			mIsFlinging = false;
-			// doScroll(distanceX, distanceY, true);
 		}
 	}
 	
@@ -194,40 +205,52 @@ public class IndoorMapView extends View {
 	}
 
 	private void doScroll(int distanceX, int distanceY, boolean needUpdate) {
-		if (mMap != null && distanceX < 0) {
-			if ((getScrollX() + (int) distanceX) < mMap.frame.left) {
-				distanceX = mMap.frame.left - getScrollX();
-			}
-		}
-
-		if (mMap != null && distanceX > 0) {
-			if ((getScrollX() + (int) distanceX + getMeasuredWidth() - 1) > mMap.frame.right) {
-				distanceX = mMap.frame.right - getScrollX()
-						- getMeasuredWidth() + 1;
-			}
-		}
-
-		if (mMap != null && distanceY < 0) {
-			if ((getScrollY() + (int) distanceY) < mMap.frame.top) {
-				distanceY = mMap.frame.top - getScrollY();
-			}
-		}
-
-		if (mMap != null && distanceY > 0) {
-			if ((getScrollY() + (int) distanceY + getMeasuredHeight() - 1) > mMap.frame.bottom) {
-				distanceY = mMap.frame.bottom - getScrollY()
-						- getMeasuredHeight() + 1;
-			}
-		}
-
-		scrollBy((int) distanceX, (int) distanceY);
-		mMap.curX += distanceX;
-		mMap.curY += distanceY;
+		int dx = distanceX;
+		int dy = distanceY;
 		
-		if (needUpdate) {
-			updateMap();
+		if (mMap != null) {
+			if (mMap.width <= getMeasuredWidth()) {
+				dx = 0;
+			}
+			
+			if (dx < 0) {
+				if ((getScrollX() + (int) dx) < mMap.frame.left) {
+					dx = mMap.frame.left - getScrollX();
+				}
+			}
+			
+			if (dx > 0) {
+				if ((getScrollX() + (int) dx + getMeasuredWidth() - 1) > mMap.frame.right) {
+					dx = mMap.frame.right - getScrollX() - getMeasuredWidth() + 1 ;
+				}
+			}
+			
+			if (mMap.height <= getMeasuredHeight()) {
+				dy = 0;
+			}
+			
+			if (dy < 0) {
+				if ((getScrollY() + (int) dy) < mMap.frame.top) {
+					dy = mMap.frame.top - getScrollY();
+				}
+			}
+			
+			if (dy > 0) {
+				if ((getScrollY() + (int) dy + getMeasuredHeight() - 1) > mMap.frame.bottom) {
+					dy = mMap.frame.bottom - getScrollY() - getMeasuredHeight() + 1 ;
+				}
+			}
 		}
 		
+		scrollBy((int) dx, (int) dy);
+		mMap.curX += dx;
+		mMap.curY += dy;
+		
+		if (!needUpdate) {
+			return;
+		}
+		
+		updateMap();
 		invalidate();
 	}
 
@@ -237,7 +260,7 @@ public class IndoorMapView extends View {
 		public Bitmap bitmap;
 	}
 
-	private class SlicedMap {
+	private class SlicedMap extends Map {
 
 		public final int width;
 		public final int height;
@@ -397,79 +420,38 @@ public class IndoorMapView extends View {
 		@Override
 		public boolean onScroll(MotionEvent e1, MotionEvent e2,
 				float distanceX, float distanceY) {
-			int dx = (int) distanceX;
-			int dy = (int) distanceY;
 			
-			if (mMap != null) {
-				if (mMap.width <= getMeasuredWidth()) {
-					dx = 0;
-				}
-				
-				if (dx < 0) {
-					if ((getScrollX() + (int) dx) < mMap.frame.left) {
-						dx = mMap.frame.left - getScrollX();
-					}
-				}
-				
-				if (dx > 0) {
-					if ((getScrollX() + (int) dx + getMeasuredWidth() - 1) > mMap.frame.right) {
-						dx = mMap.frame.right - getScrollX() - getMeasuredWidth() + 1 ;
-					}
-				}
-				
-				if (mMap.height <= getMeasuredHeight()) {
-					dy = 0;
-				}
-				
-				if (dy < 0) {
-					if ((getScrollY() + (int) dy) < mMap.frame.top) {
-						dy = mMap.frame.top - getScrollY();
-					}
-				}
-				
-				if (dy > 0) {
-					if ((getScrollY() + (int) dy + getMeasuredHeight() - 1) > mMap.frame.bottom) {
-						dy = mMap.frame.bottom - getScrollY() - getMeasuredHeight() + 1 ;
-					}
-				}
-			}
-			
-			scrollBy((int) dx, (int) dy);
-			mMap.curX += dx;
-			mMap.curY += dy;
-			updateMap();
+			doScroll((int) distanceX, (int) distanceY, true);
 			return true;
 		}
 
-		
 		@Override
 		public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX,
 				float velocityY) {
 			
-//			mIsFlinging = true;
-//			mCurX = getScrollX();
-//			mCurY = getScrollY();
-//
-//			mScroller.forceFinished(true);
-////			mScroller.fling(
-////					getScrollX(), 
-////					getScrollY(), 
-////					(int) -velocityX, 
-////					(int) -velocityY, 
-////					0, mMap.width - getMeasuredWidth(), 
-////					0, mMap.height - getMeasuredHeight(), 
-////					getMeasuredWidth() / 4, 
-////					getMeasuredHeight() / 4);
-//			
-//			mScroller.startScroll(mCurX, mCurY, (int) -velocityX / 10, (int) -velocityY / 10, 1000);
-//			ViewCompat.postInvalidateOnAnimation(IndoorMapView.this);
-//			return true;
-			return super.onFling(e1, e2, velocityX, velocityY);
+			Log.d(TAG, "onFling ...");
+
+			mIsFlinging = true;
+			mFlingCount = 0;
+			
+			mScroller.forceFinished(true);
+			mScroller.fling(
+					0, 
+					0,
+					(int) -velocityX, 
+					(int) -velocityY, 
+					getMeasuredWidth() - mMap.width, mMap.width - getMeasuredWidth(), 
+					getMeasuredHeight() - mMap.height, mMap.height - getMeasuredHeight());
+			ViewCompat.postInvalidateOnAnimation(MapView.this);
+			Log.d(TAG, "onFling: current start = " + mScroller.getStartX());
+			return true;
+			// return super.onFling(e1, e2, velocityX, velocityY);
 		}
 
 		@Override
 		public boolean onDown(MotionEvent e) {
 			mIsFlinging = false;
+			mFlingCount = 0;
 			if (!mScroller.isFinished()) {
 				mScroller.forceFinished(true);
 			}
